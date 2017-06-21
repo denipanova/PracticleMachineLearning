@@ -1,0 +1,175 @@
+---
+title: 'Practicak Machine Learning: Final Project'
+author: "Denitsa Panova"
+date: "June 20, 2017"
+output: html_document
+---
+#Executive Summary  
+The scope of the following paper is to see how well people perform certain activities. 
+The data which is used is taken from a group of enthusiasts who record their movements. More information about the data and how it is collected can be found [here.](http://groupware.les.inf.puc-rio.br/har) 
+In this report we explore the data to identify how well (**classe** variable) activities are performed. 
+The second objective is to find which machine learning algorithm predicts how well 20 out-of-sample activities 
+are performed. We try three approaches - Decision Trees, Random Forest and GBM. The best one (relying on the out-of-sample accuracy and overfiting) 
+is GBM.  
+  
+#Data 
+  
+### Import Data and Packages
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+library(caret); library(rpart);library(rpart.plot);library(randomForest);library(corrplot)
+```
+
+Let's import data from url.  
+```{r, echo=TRUE, warning=FALSE}
+#urls 
+url_train <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url_test <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+train_full = read.csv(url(url_train), stringsAsFactors = FALSE)
+test = read.csv(url(url_test),stringsAsFactors = FALSE)
+
+```
+### Data Exploration and Processing
+The data set have 160 columns.Let's investigate them.
+```{r, echo=TRUE}
+colnames(train_full)[1:10]
+```
+The first five are connected to the person or time specific information. For the purposes of this report,
+we will consider that these factors are irrelevant. Other columns which needs to be removed are those which have to many NAs or zeros. We shall exclude columns with more than 95% of NAs. 
+```{r, echo=TRUE, warning=FALSE}
+
+col_to_remove = colnames(train_full)[1:5] #taking the first five
+
+train_full= train_full[,!(colnames(train_full)%in%col_to_remove)]
+
+#Need to transform some columns from factor to numerical 
+
+columns_not_to_numeric = c('new_window','classe')
+
+for(c in colnames(train_full)){
+  if(!(c %in% columns_not_to_numeric)){
+    train_full[,c] = as.numeric(train_full[,c])
+    test[,c] = as.numeric(test[,c])
+  }
+}
+
+col_to_remove = c()
+#checking which columns have 95% NA or zero coverage
+for(cname in colnames(train_full)){
+  if(sum(is.na(train_full[,cname])) > 0.95*(nrow(train_full) | sum(train_full[,cname]==0) > 0.95*(nrow(train_full)))) {
+    col_to_remove = c(col_to_remove,cname)
+  } 
+}
+length(col_to_remove) 
+```
+Remove 100 out of the 160 initial columns, which leaves us with 60 predictors. We would also separate wo datasets out of the train set so that we can validate our model.
+```{r, echo=TRUE}
+#train/validate
+set.seed(666)
+train_index <- createDataPartition(train_full$classe, p=0.8, list=FALSE) 
+train <- train_full[train_index, ]
+validate <- train_full[-train_index, ]
+train = train[,!(colnames(train)%in%col_to_remove)]
+validate = validate[,!(colnames(validate)%in%col_to_remove)]
+```
+We investigate the correlation between the remaining vairables. 
+```{r, echo = TRUE}
+cor_mat = cor(train[,!(colnames(train)%in%columns_not_to_numeric)])
+corrplot(cor_mat,type = "upper", tl.pos = "td",
+         method = "circle", tl.cex = 0.5, tl.col = 'black',
+         order = "hclust", diag = FALSE)
+```
+  
+Note: **there is observed correlation between some of the variables.** Yet, we shall use all of the remaining variables since we are not sure which ones to remove.
+
+#Models
+We shall consider three models and in the subsequent section we will test the chosen model on the test set. Moreover, we shall consider 5 fold cross-validation for all of them.  
+  
+### Decision Trees  
+
+```{r, echo =TRUE}
+control_models <- trainControl(method = "cv", number = 5)
+decision_tree <- train(classe ~ ., 
+                       data = train, 
+                       method = "rpart", 
+                       trControl = control_models)
+#plot the tree
+plot(decision_tree$finalModel, main = 'Decision Tree Structure', asp = 5)
+text(decision_tree$finalModel, pos = 4, col= 'red')
+```
+
+We observe that the model separates on 4 major variables (based on their importance).
+Those variables are roll_bell, pitch_forearm, magnet_dumbbell and roll_forearm. 
+Now let's predict on the validation dataset and see the confusion matrix
+```{r, echo=TRUE}
+# predict validation set
+predict_decision_tree <- predict(decision_tree, validate)
+# Confusion Matrix Accuracy 
+confusionMatrix(validate$classe, predict_decision_tree)$overall[1]
+```
+The out-of-sample accuracy is 20% It is perdicting with great accuracy class E (The complete confusion matrix can be found in the appendix). Yet, all others is misclassifying. Therefore, we can conclude that it is **not appropriate model.**
+
+### Random Forest
+```{r, echo =TRUE}
+rf <- train(classe ~ ., 
+            data = train, 
+            method = "rf", 
+            trControl = control_models)
+# predict validation set
+predict_rf <- predict(rf, validate)
+# Confusion Matrix
+confusionMatrix(validate$classe, predict_rf)$overall[1]
+```
+The out-of-sample accuracy is 99.7 It is classifying everything almost perfectly, which would suggest for **overfitting** (the complete confusion matrix is available in teh appendix). **Yet, we for now we conclude that this is appropriate model.** As we have seen in our investigation of the dataset, many of the factors are correlated, threfore, random forest, which take cares of that is performing really well.
+  
+### GBM 
+```{r, echo =TRUE, warning = FALSE, message=FALSE}
+gbm <- train(classe ~ ., 
+            data = train, 
+            method = "gbm", 
+            trControl = control_models,
+            verbose = FALSE)
+# predict validation set
+predict_gbm <- predict(gbm, validate)
+# Confusion Matrix
+confusionMatrix(validate$classe, predict_gbm)$overall[1]
+```
+The out-of-sample accuracy is 98.6% which is less than the Random forest one. Yet, the predictions are not as acccurate as the ranodm forest ones, suggesting that GBM is not overfitting the model to that extend.(the complete confusion matrix is available in the appendix). Therefore, we can conclude that this is the model which we appoint as **the most appropriate.**  
+  
+#Predicting the Test DataSet Resluts 
+  
+To re-evaluate the model accuracy, we shall predict the test results.   
+```{r, echo = TRUE}
+# predict on test set
+preds <- predict(gbm, newdata=test)
+preds
+```
+
+#Appendix 
+## Decision Tree
+### Model 
+```{r, echo = TRUE}
+decision_tree$finalModel
+```
+### Confusion Matrix
+```{r, echo = TRUE}
+confusionMatrix(validate$classe, predict_decision_tree)
+```
+## Random Forest
+### Model 
+```{r, echo = TRUE}
+rf$finalModel
+```
+### Confusion Matrix
+```{r, echo = TRUE}
+confusionMatrix(validate$classe, predict_rf)
+```
+## GBM
+### Model
+```{r, echo = TRUE}
+gbm$finalModel
+```
+### Confusion Matrix
+```{r, echo = TRUE}
+confusionMatrix(validate$classe, predict_gbm)
+```
+
