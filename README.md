@@ -2,9 +2,9 @@
 
 ## Files in the Repository
 
-[Markdown file](https://github.com/denipanova/PracticleMachineLearning/blob/master/practicle_machine_learning.Rmd)  
+1) [Markdown file](https://github.com/denipanova/PracticleMachineLearning/blob/master/practicle_machine_learning.Rmd)  
   
-[HTML file](http://rpubs.com/denipanova/286532) 
+2) [HTML file](http://rpubs.com/denipanova/286532) 
 
 ## Background
 
